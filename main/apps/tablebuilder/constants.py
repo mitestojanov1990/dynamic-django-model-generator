@@ -9,3 +9,4 @@ ACCEPTABLE_STRING_TYPES = [CHAR_STRING_TYPE, TEXT_STRING_TYPE]
 
 
 GENERATE_TABLE_EXCEPTION_MESSAGE = "Something went wrong. Deleting table structure from db."
+TABLE_ALREADY_EXISTS_EXCEPTION_MESSAGE = "Table Already Exists."

@@ -7,6 +7,7 @@ from django.apps import apps
 from django.db import connection, models
 
 from main.apps.tablebuilder.constants import APP_NAME, TABLE_FIELD_DEFAULT_STRING_LENGTH
+from main.apps.tablebuilder.models import TableStructure
 
 
 def _get_field_class(
@@ -27,7 +28,7 @@ def _get_field_class(
     return field_class
 
 
-def create_dynamic_model(name, columns=None, app_label="", module="", options=None):
+def create_dynamic_model(name, field_definitions=None, app_label="", module="", options=None):
     """
     Dynamically create a new model and its corresponding database table.
     """
@@ -46,13 +47,11 @@ def create_dynamic_model(name, columns=None, app_label="", module="", options=No
 
     attrs = {"__module__": module, "Meta": Meta}
 
-    if columns:
-        if not any("id" in field for field in columns):
-            id_field = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-            attrs["id"] = id_field
-        for dic in columns:
-            field_name = dic.get("name")
-            field_type = dic.get("type")
+    if field_definitions:
+        attrs["id"] = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        for field_definition in field_definitions:
+            field_name = field_definition.get("name")
+            field_type = field_definition.get("type")
             field_class = _get_field_class(field_name, field_type)
 
             attrs[field_name] = field_class
@@ -62,13 +61,16 @@ def create_dynamic_model(name, columns=None, app_label="", module="", options=No
     return model
 
 
-def create_model_and_table(app_label, model_name, columns):
-    model = create_dynamic_model(model_name, columns, app_label)
+def register_dynamic_model(app_label, model_name, field_definitions, module):
+    model = create_dynamic_model(model_name, field_definitions, app_label, module)
 
     # Register the model with Django's app registry
     apps.register_model(APP_NAME, model)
     apps.all_models[app_label][model_name.lower()] = model
+    return model
 
+
+def create_db_table(model):
     # Use the schema_editor to create the table
     with connection.schema_editor() as schema_editor:
         schema_editor.create_model(model)
@@ -109,16 +111,48 @@ def remove_fields_from_model(model, fields_to_remove):
             schema_editor.remove_field(model, field)
 
 
-def reload_app_models(app_name):
+def reload_app_models():
     """
     Reloads the models module of the specified app and resets the app cache.
 
     This is useful when schema changes have been applied to models at runtime.
     """
     # Reload the app's models module
-    module = apps.get_app_config(app_name).name
+    module = apps.get_app_config(APP_NAME).name
     reload(sys.modules[module])
 
     # Reset the apps cache
-    apps.all_models[app_name].clear()
+    apps.all_models[APP_NAME].clear()
     apps.clear_cache()
+
+
+def sequence(number):
+    """
+    :param number:
+    :return: a dict that contains random data
+    """
+    return {
+        "param1": "param-{0}".format(number),
+        "param2": "param-{0}".format(number),
+    }
+
+
+def generate_tables_on_startup():
+    if "tablebuilder_tablestructure" not in connection.introspection.table_names():
+        return
+    for table_structure in TableStructure.objects.all():
+        field_definitions = [
+            {"name": field.name, "type": field.type}
+            for field in table_structure.field_definitions.all()
+        ]
+        model = register_dynamic_model(
+            APP_NAME,
+            table_structure.name,
+            field_definitions,
+            "main.apps.tablebuilder.models",
+        )
+        try:
+            create_db_table(model)
+        except Exception as exc:
+            print(f"Error while creating model or table for {table_structure.name}: {exc}")
+            continue
