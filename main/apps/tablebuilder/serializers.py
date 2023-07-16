@@ -10,6 +10,7 @@ from main.apps.tablebuilder.constants import (
     TABLE_FIELD_DEFAULT_STRING_LENGTH,
 )
 from main.apps.tablebuilder.helpers import (
+    add_field_to_model,
     register_dynamic_model,
     create_db_table,
     modify_model,
@@ -21,6 +22,7 @@ from main.apps.tablebuilder.models import FieldDefinition, TableStructure
 class FieldDefinitionSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField()
     name = serializers.CharField(max_length=TABLE_FIELD_DEFAULT_STRING_LENGTH)
+    old_name = serializers.CharField(max_length=TABLE_FIELD_DEFAULT_STRING_LENGTH, required=False)
     type = serializers.ChoiceField(choices=["string", "number", "boolean"])
     table_structure_id = serializers.UUIDField(required=False, write_only=True)
 
@@ -29,6 +31,7 @@ class FieldDefinitionSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "name",
+            "old_name",
             "type",
             "table_structure_id",
         )
@@ -100,37 +103,60 @@ class TableStructureSerializer(serializers.ModelSerializer):
         model = apps.get_model(APP_NAME, name, require_ready=False)
 
         # Get set of new field names
-        new_field_names = set(
-            field_definition.get("name") for field_definition in field_definitions_data
-        )
+        new_field_definitions = [field_definition for field_definition in field_definitions_data]
 
         # Get set of existing field names
-        existing_field_names = set(
-            field.name for field in model._meta.fields if field.name != "id"
-        )  # Exclude the id field
+        existing_field_definitions = [
+            field for field in model._meta.fields if field.name != "id"
+        ]  # Exclude the id field
 
+        new_field_names = set(field.get("name") for field in new_field_definitions)
+        existing_field_names = set(field.name for field in existing_field_definitions)
+        field_names_to_update = set(
+            field.get("old_name") for field in field_definitions_data if "old_name" in field
+        )
+        field_definitions_to_update = [
+            field for field in field_definitions_data if "old_name" in field
+        ]
         # Identify the fields that need to be removed
-        fields_to_remove = existing_field_names - new_field_names
+        field_names_to_remove = existing_field_names - new_field_names
 
         # Identify the fields that need to be added
-        fields_to_add = new_field_names - existing_field_names
-        for field_definition in field_definitions:
+        field_names_to_add = new_field_names - existing_field_names
+        # for field_definition in fields_to_add:existing_field_names
+        for field_name in field_names_to_add:
+            field_definition = [
+                field_def
+                for field_def in field_definitions_data
+                if field_def.get("name") == field_name
+            ]
+            if len(field_definition) < 1:
+                continue
+            field_definition = field_definition[0]
+            add_field_to_model(model, field_name, field_definition.get("type"))
+
+        for field_name in existing_field_names:
+            field_definition = [
+                field_def
+                for field_def in field_definitions_to_update
+                if field_def.get("old_name") == field_name
+            ]
+            if len(field_definition) < 1:
+                continue
+            field_definition = field_definition[0]
+
             column_name = field_definition.get("name")
             column_type = field_definition.get("type")
-            old_column_name = field_definition.setdefault("old_name", None)
-
-            # If field needs to be updated
-            if column_name in existing_field_names and old_column_name != column_name:
-                exists = [field for field in model._meta.fields if field.name == old_column_name]
-                if len(exists) > 0:
+            old_column_name = field_definition.get("old_name")
+            try:
+                if not hasattr(model, field_name):
                     modify_model(model, old_column_name, column_name, column_type)
-
-            # If field needs to be added
-            # elif column_name in fields_to_add:
-            #    add_field_to_model(model, column_name, column_type)
+            except Exception as exc:
+                print(exc)
+                raise exc
 
         # Remove fields
-        remove_fields_from_model(model, fields_to_remove)
+        remove_fields_from_model(model, field_names_to_remove)
 
         return instance
 

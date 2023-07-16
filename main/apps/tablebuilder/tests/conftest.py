@@ -27,6 +27,19 @@ def users_table_data():
 
 
 @pytest.fixture()
+def users_table_update_data():
+    return {
+        "name": "users",
+        "field_definitions": [
+            {"name": "email", "type": "string"},
+            {"name": "address", "type": "string"},
+            {"name": "phone_number", "type": "number", "old_name": "phone_number"},
+            {"name": "registered", "type": "boolean", "old_name": "subscriber"},
+        ],
+    }
+
+
+@pytest.fixture()
 def invalid_type_users_table_data():
     TableStructure.objects.all().delete()
     return {
@@ -57,17 +70,19 @@ def populated_tablebuilder_db():
         name="users",
     )
 
-    first_name = create_new_field_definition("first_name", "string", table_structure1)
-    last_name = create_new_field_definition("last_name", "string", table_structure1)
-    phone_number = create_new_field_definition("phone_number", "number", table_structure1)
-    subscriber = create_new_field_definition("subscriber", "boolean", table_structure1)
+    first_name = create_new_field_definition("first_name", "string", None, table_structure1)
+    last_name = create_new_field_definition("last_name", "string", None, table_structure1)
+    phone_number = create_new_field_definition("phone_number", "number", None, table_structure1)
+    subscriber = create_new_field_definition("subscriber", "boolean", None, table_structure1)
 
     table_structure2 = TableStructureFactory.create(
         name="user_logins",
     )
-    is_logged_in = create_new_field_definition("is_logged_in", "boolean", table_structure2)
+    is_logged_in = create_new_field_definition("is_logged_in", "boolean", None, table_structure2)
     return [table_structure1, table_structure2]
 
 
-def create_new_field_definition(name, type, table_structure):
-    return FieldDefinition.objects.create(name=name, type=type, table_structure=table_structure)
+def create_new_field_definition(name, type, old_name, table_structure):
+    return FieldDefinition.objects.create(
+        name=name, type=type, old_name=old_name, table_structure=table_structure
+    )

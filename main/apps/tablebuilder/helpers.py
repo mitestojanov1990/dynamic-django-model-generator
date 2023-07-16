@@ -4,6 +4,7 @@ import sys
 import uuid
 
 from django.apps import apps
+from django.core.exceptions import FieldDoesNotExist
 from django.db import connection, models
 
 from main.apps.tablebuilder.constants import APP_NAME, TABLE_FIELD_DEFAULT_STRING_LENGTH
@@ -19,7 +20,7 @@ def _get_field_class(
     elif field_type == "number":
         field_class = models.IntegerField()
     elif field_type == "boolean":
-        field_class = models.BooleanField()
+        field_class = models.BooleanField(default=False)
     elif field_name == "id":
         field_class = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     else:
@@ -94,11 +95,26 @@ def modify_model(model, old_field_name, field_name, field_type):
     """
     Modify a model using Django's SchemaEditor.
     """
+
+    # Get the old field from the model
+    try:
+        old_field = model._meta.get_field(old_field_name)
+    except FieldDoesNotExist:
+        print(f"Field {old_field_name} does not exist on model {model}.")
+        return
+
+    # Alter the field using the schema editor
     with connection.schema_editor() as schema_editor:
+        # Create a new field instance
         field_class = _get_field_class(field_name, field_type)
         field_class.set_attributes_from_name(field_name)
-        old_field = model._meta.get_field(old_field_name)
+        field_class.model = model
         schema_editor.alter_field(model, old_field, field_class)
+
+    # Register the model with Django's app registry
+    apps.register_model(APP_NAME, model)
+    apps.all_models[APP_NAME][model.__name__.lower()] = model
+    reload_app_models()
 
 
 def remove_fields_from_model(model, fields_to_remove):
@@ -140,7 +156,11 @@ def sequence(number):
 def generate_tables_on_startup():
     if "tablebuilder_tablestructure" not in connection.introspection.table_names():
         return
-    for table_structure in TableStructure.objects.all():
+    queryset = TableStructure.objects.all()
+    count = len(queryset)
+    if count > 0:
+        reload_app_models()
+    for table_structure in queryset:
         field_definitions = [
             {"name": field.name, "type": field.type}
             for field in table_structure.field_definitions.all()

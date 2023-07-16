@@ -13,6 +13,7 @@ class FieldDefinition(TimeStampedModel):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=TABLE_NAME_MAX_LENGTH)
+    old_name = models.CharField(max_length=TABLE_NAME_MAX_LENGTH, null=True, default=None)
     type = models.CharField(max_length=50)
     table_structure = models.ForeignKey(
         "TableStructure", on_delete=models.CASCADE, related_name="field_definitions"

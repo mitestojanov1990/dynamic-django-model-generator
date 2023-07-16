@@ -21,6 +21,7 @@ class FieldDefinitionFactory(DjangoModelFactory):
 
     type = FuzzyText()
     name = FuzzyText()
+    old_name = FuzzyText()
     table_structure = factory.SubFactory(TableStructureFactory)
 
     class Meta:

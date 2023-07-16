@@ -11,5 +11,4 @@ urlpatterns = [
 ]
 
 # generate tables if any
-reload_app_models()
 generate_tables_on_startup()

@@ -64,6 +64,30 @@ def test_create_with_existing_table_name(api_client, users_table_data):
     )
 
 
+def test_update(api_client, users_table_update_data, populated_tablebuilder_db):
+    reload_app_models()
+    generate_tables_on_startup()
+    # Arrange
+    obj = TableStructure.objects.get(name="users")
+    id = obj.id
+    name = obj.name
+    # Arrange
+    url = f"{API_URL}{id}/"
+    # Act
+    response = api_client.put(url, users_table_update_data, format="json")
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    model = apps.get_model(APP_NAME, name)
+    assert model.__name__ == name
+
+    # Ensure the response contains the primary key of the created object
+    created_object = TableStructure.objects.get(pk=response.data)
+    assert created_object is not None
+    import pdb
+
+    pdb.set_trace()
+
+
 def test_add_row(api_client, populated_tablebuilder_db):
     reload_app_models()
     generate_tables_on_startup()
